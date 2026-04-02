@@ -472,6 +472,7 @@ function Streaks({game, oddsData, mainTab}) {
     }
     const goalMs = [{m:1,l:'1+ Goals',ok:'goals_over'},{m:2,l:'2+ Goals',ok:'goals_over'},{m:3,l:'3+ Goals',ok:'goals_over'},{m:4,l:'4+ Goals',ok:'goals_over'}];
     const dispMs = [{m:15,l:'15+ Disp',ok:'disposals_over'},{m:20,l:'20+ Disp',ok:'disposals_over'},{m:25,l:'25+ Disp',ok:'disposals_over'},{m:30,l:'30+ Disp',ok:'disposals_over'}];
+    const fantMs = [{m:80,l:'80+ AF',ok:'fantasy_over'},{m:90,l:'90+ AF',ok:'fantasy_over'},{m:100,l:'100+ AF',ok:'fantasy_over'},{m:110,l:'110+ AF',ok:'fantasy_over'}];
 
     teamPlayers.forEach(p => {
       const pd = D.playerData[p.name];
@@ -549,6 +550,40 @@ function Streaks({game, oddsData, mainTab}) {
             if (sVen >= 5) {
               pItems.push({player:p.name,teamKey:p.team,streak:sVen,desc:`${l} streak (at ${game.venueShort})`,color:'#22c55e',odds:oddsObj,milestone:m,stat:'disposals',
                 last10:buildLast10d(venGames,sVen)});
+            }
+          }
+        }
+      });
+      fantMs.forEach(({m,l,ok}) => {
+        const oddsObj = D.playerOdds[p.name]?.[ok]?.[m];
+        if (!oddsObj || !oddsObj.length) return;
+        const buildLast10f = (gArr, streakLen) => {
+          const showLen = Math.max(10, streakLen);
+          const l10 = gArr.slice(0,showLen);
+          const si = new Set(Array.from({length:streakLen}, (_,i)=>i));
+          return l10.map((g,i)=>({year:g.year,opp:ABBREV[g.opponent]||g.opponent.substring(0,4),opponent:g.opponent,venue:g.venue||'',goals:g.goals,disp:g.disposals,fantasy:g.fantasy||0,pctPlayed:g.pct_played,isStreak:si.has(i)}));
+        };
+        const sAll = activeStreak(games, g => (g.fantasy||0) >= m);
+        if (sAll >= 5) {
+          pItems.push({player:p.name,teamKey:p.team,streak:sAll,desc:`${l} streak`,color:'#22c55e',odds:oddsObj,milestone:m,stat:'fantasy',
+            last10:buildLast10f(games,sAll)});
+        }
+        const oppTeamF = p.team === tA ? tB : tA;
+        const h2hGames = games.filter(g => g.opponent === oppTeamF);
+        if (h2hGames.length >= 5) {
+          const sH2H = activeStreak(h2hGames, g => (g.fantasy||0) >= m);
+          if (sH2H >= 5) {
+            pItems.push({player:p.name,teamKey:p.team,streak:sH2H,desc:`${l} streak (vs ${ABBREV[oppTeamF]||oppTeamF})`,color:'#22c55e',odds:oddsObj,milestone:m,stat:'fantasy',
+              last10:buildLast10f(h2hGames,sH2H)});
+          }
+        }
+        if (venUp) {
+          const venGames = games.filter(g => g.venue && g.venue.toUpperCase() === venUp);
+          if (venGames.length >= 5) {
+            const sVen = activeStreak(venGames, g => (g.fantasy||0) >= m);
+            if (sVen >= 5) {
+              pItems.push({player:p.name,teamKey:p.team,streak:sVen,desc:`${l} streak (at ${game.venueShort})`,color:'#22c55e',odds:oddsObj,milestone:m,stat:'fantasy',
+                last10:buildLast10f(venGames,sVen)});
             }
           }
         }
@@ -631,12 +666,12 @@ function Streaks({game, oddsData, mainTab}) {
         {isE && isPlayer && s.last10 && (
           <div onClick={e=>e.stopPropagation()} style={{marginTop:8,maxHeight:s.last10.length>10?240:undefined,overflowY:s.last10.length>10?'auto':'visible'}}>
             <table className="gl-tbl" style={{fontSize:10}}>
-              <thead><tr><th>Yr</th><th>Opp</th><th>Venue</th><th style={{textAlign:'center'}}>{s.stat==='goals'?'G':'D'}</th></tr></thead>
+              <thead><tr><th>Yr</th><th>Opp</th><th>Venue</th><th style={{textAlign:'center'}}>{s.stat==='goals'?'G':s.stat==='fantasy'?'AF':'D'}</th></tr></thead>
               <tbody>
                 {s.last10.map((g,j)=>{
                   const oppTeam = g.opponent;
                   const oppTS = TEAM_STYLES[oppTeam]||{};
-                  const statVal = s.stat==='goals'?g.goals:g.disp;
+                  const statVal = s.stat==='goals'?g.goals:s.stat==='fantasy'?(g.fantasy||0):g.disp;
                   const isMilestone = statVal >= s.milestone;
                   const statColor = isMilestone?'var(--acc)':'#ef4444';
                   const rowBg = g.isStreak?'rgba(34,197,94,0.05)':'transparent';
@@ -742,6 +777,9 @@ function TeamStats({game, oddsData}) {
       } else if(factor==='dow'){
         const dw=game.day;
         gA=gA.filter(r=>r.dow===dw);gB=gB.filter(r=>r.dow===dw);
+      } else if(factor==='daynight'){
+        const dn=game.tod;
+        gA=gA.filter(r=>r.tod===dn);gB=gB.filter(r=>r.tod===dn);
       }
     });
     if(period==='last10y'){gA=gA.filter(r=>r.y>=2016);gB=gB.filter(r=>r.y>=2016);}
@@ -782,6 +820,7 @@ function TeamStats({game, oddsData}) {
       else if(f==='wet') h+=' Wet';
       else if(f==='favund'&&oddsData) h+=(oddsData.fav===tn?' as Fav':' as Und');
       else if(f==='dow') h+=` ${game.day}`;
+      else if(f==='daynight') h+=` ${game.tod}`;
     });
     if(period==='2026') h+=' 2026';
     else if(period==='last3y') h+=' Last 3 Yrs';
@@ -792,7 +831,7 @@ function TeamStats({game, oddsData}) {
     return h;
   };
 
-  const fList=[['all','All Games'],['h2h','H2H'],['venue','Venue'],['wet','Wet'],['favund','Fav/Und'],['dow',game.day||'Day']];
+  const fList=[['all','All Games'],['h2h','H2H'],['venue','Venue'],['wet','Wet'],['favund','Fav/Und'],['dow',game.day||'Day'],['daynight',game.tod||'Day/Night']];
   const pList=[['since2012','Since 2012'],['last10y','Last 10 Yrs'],['last3y','Last 3 Yrs'],['2026','2026'],['last10g','Last 10']];
   const qList=[['total','Total'],['q1','Q1'],['q2','Q2'],['q3','Q3'],['q4','Q4']];
   const hS=TEAM_STYLES[game.home]||{};
@@ -924,7 +963,9 @@ function PlayerModal({pl, game, initSubTab, initMilestone, initFactor, onClose})
   const fantasyMs = [80,90,100,110];
   const activeMs = subTab === 'goals' ? goalMs : subTab === 'disposals' ? dispMs : fantasyMs;
 
+  const isInitMount = React.useRef(true);
   React.useEffect(() => {
+    if (isInitMount.current) { isInitMount.current = false; return; }
     if (subTab === 'goals') setMilestone(1);
     else if (subTab === 'disposals') setMilestone(15);
     else if (subTab === 'fantasy') setMilestone(80);
@@ -977,6 +1018,7 @@ function PlayerModal({pl, game, initSubTab, initMilestone, initFactor, onClose})
   const totalGoals = periodGames.reduce((s,g) => s + g.goals, 0);
   const totalBehinds = periodGames.reduce((s,g) => s + (g.behinds||0), 0);
   const avgDisp = totalGames ? (periodGames.reduce((s,g) => s + g.disposals, 0) / totalGames).toFixed(1) : '0.0';
+  const avgAFModal = totalGames ? (periodGames.reduce((s,g) => s + (g.fantasy||0), 0) / totalGames).toFixed(1) : '0.0';
 
   const posRankKey = `${oppTeam}|${position}`;
   const posRank = D.posRankings[posRankKey] || {};
@@ -1038,6 +1080,7 @@ function PlayerModal({pl, game, initSubTab, initMilestone, initFactor, onClose})
     {id: 'dry', name: 'In Dry', fn: g => g.filter(x => x.conditions === 'DRY')},
     {id: 'wet', name: 'In Wet', fn: g => g.filter(x => x.conditions === 'WET')},
     {id: 'dow', name: `on ${gameDay}`, fn: g => g.filter(x => x.dow === gameDay)},
+    {id: 'daynight', name: `${game.tod || 'Day/Night'}`, fn: g => g.filter(x => x.tod === game.tod)},
     {id: 'round', name: `Round ${game.rd || '?'}`, fn: g => g.filter(x => x.round === `Round ${game.rd}` || x.round === game.rd)},
   ];
 
@@ -1173,6 +1216,7 @@ function PlayerModal({pl, game, initSubTab, initMilestone, initFactor, onClose})
           <div className="modal-card" style={{background:'var(--bg2)'}}><div className="modal-card-val">{avgPct}%</div><div className="modal-card-lbl">TOG %</div></div>
           <div className="modal-card" style={{background:'var(--bg2)'}}><div className="modal-card-val">{totalGoals}</div><div className="modal-card-lbl">Goals</div></div>
           <div className="modal-card" style={{background:'var(--bg2)'}}><div className="modal-card-val">{avgDisp}</div><div className="modal-card-lbl">Avg Disp</div></div>
+          <div className="modal-card" style={{background:'var(--bg2)'}}><div className="modal-card-val">{avgAFModal}</div><div className="modal-card-lbl">AVG AF</div></div>
           {position && posRank.gr ? (
             <div className="modal-card" style={{background:rankBg(posRank.gr),border:`1px solid ${rankColor(posRank.gr)}33`}}><div className="modal-card-val" style={{color:rankColor(posRank.gr)}}>#{posRank.gr}</div><div className="modal-card-lbl">GLS V {oppAbbr}</div></div>
           ) : null}
@@ -1265,7 +1309,7 @@ function PlayerModal({pl, game, initSubTab, initMilestone, initFactor, onClose})
               }
             } else if (subTab === 'fantasy' && count > 0) {
               const totalAF = games.reduce((s,g) => s + (g.fantasy||0), 0);
-              desc = `${totalAF} AF in ${count} games`;
+              desc = `avg ${(totalAF/count).toFixed(1)} AF in ${count} games`;
             } else if (subTab === 'disposals' && count > 0) {
               desc = `avg. ${(games.reduce((s,g) => s + g.disposals, 0) / count).toFixed(1)} disp in ${count} games`;
             } else if (subTab === 'goals' && count > 0) {
@@ -1348,6 +1392,8 @@ function PlayerStats({game, oddsData}) {
         if (pos) {
           games = games.filter(g => g.position === pos);
         }
+      } else if (factor === 'daynight') {
+        games = games.filter(g => g.tod === game.tod);
       }
       if (period === 'last5') games = games.slice(0,5);
       else if (period === 'last10') games = games.slice(0,10);
@@ -1556,7 +1602,7 @@ function PlayerStats({game, oddsData}) {
       {label:'Games',val:games.length},
       {label:'%Played',val:avgPct+'%'},
       {label:'Total AF',val:totalAF},
-      {label:'Avg AF',val:avgAF},
+      {label:'AVG AF',val:avgAF},
       {label:'Goals',val:totalGoals},
       {label:'Disp',val:avgDisp}
     ] : [
@@ -1565,7 +1611,7 @@ function PlayerStats({game, oddsData}) {
       {label:'Goals',val:totalGoals},
       {label:'Behinds',val:totalBehinds},
       {label:'Avg Dis',val:avgDisp},
-      {label:'Marks I50',val:avgMI50}
+      {label:'AVG AF',val:avgAF}
     ];
 
     return (
@@ -1667,6 +1713,7 @@ function PlayerStats({game, oddsData}) {
           <button className={"tb" + (factor === 'venue' ? " on" : "")} onClick={() => setFactor('venue')}>Venue</button>
           <button className={"tb" + (factor === 'wet' ? " on" : "")} onClick={() => setFactor('wet')}>Wet</button>
           <button className={"tb" + (factor === 'pos' ? " on" : "")} onClick={() => setFactor('pos')}>Position</button>
+          <button className={"tb" + (factor === 'daynight' ? " on" : "")} onClick={() => setFactor('daynight')}>{game.tod||'Day/Night'}</button>
         </div>
         <div className="cl" style={{marginLeft:8}}>Period</div>
         <div className="tg">
